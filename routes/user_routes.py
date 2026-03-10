@@ -43,20 +43,19 @@ async def login(data: LoginRequest):
     user = await database.users.find_one({"email": data.email})
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=400, detail="Invalid email or password")
 
     if not pwd_context.verify(data.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid password")
+        raise HTTPException(status_code=400, detail="Invalid email or password")
 
     access_token = create_access_token(
-        data={"sub": str(user["_id"]), "role": user["role"]}
+        data={"sub": str(user["_id"])}
     )
 
     return {
         "access_token": access_token,
         "token_type": "bearer"
     }
-
 
 @router.delete("/delete-all")
 async def delete_all():

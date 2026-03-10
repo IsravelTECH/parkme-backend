@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from models.user_model import User
+from models.user_model import SignupRequest
 from models.user_model import LoginRequest  
+from models.user_model import User
 from database import database
 from passlib.context import CryptContext
 from auth import create_access_token
@@ -13,30 +14,28 @@ router = APIRouter()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-@router.post("/register")
-async def register(user: User):
+@router.post("/signup")
+async def signup(user: SignupRequest):
 
-    # 🔎 Check if email already exists
+    # Check if email already exists
     existing_user = await database.users.find_one({"email": user.email})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already exists")
 
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Hash password
     hashed_password = pwd_context.hash(user.password)
 
-    user_dict = {
+    new_user = {
         "name": user.name,
         "email": user.email,
-        "password": hashed_password,
-        "role": user.role
+        "phone": user.phone,
+        "password": hashed_password
     }
 
-    result = await database.users.insert_one(user_dict)
+    await database.users.insert_one(new_user)
 
-    return {
-        "message": "User registered successfully",
-        "id": str(result.inserted_id)
-    }
-
+    return {"message": "User created successfully"}
 
 @router.post("/login")
 async def login(data: LoginRequest):
@@ -44,10 +43,10 @@ async def login(data: LoginRequest):
     user = await database.users.find_one({"email": data.email})
 
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+        raise HTTPException(status_code=404, detail="User not found")
 
     if not pwd_context.verify(data.password, user["password"]):
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid password")
 
     access_token = create_access_token(
         data={"sub": str(user["_id"]), "role": user["role"]}
@@ -113,3 +112,16 @@ async def owner_dashboard(user=Depends(require_role("owner"))):
 @router.get("/seeker-dashboard")
 async def seeker_dashboard(user=Depends(require_role("seeker"))):
     return {"message": "Welcome Seeker", "user": user}
+
+
+@router.post("/register") 
+async def register(user: User): 
+# 🔎 Check if email already exists 
+    existing_user = await database.users.find_one({"email": user.email}) 
+    if existing_user: 
+       raise HTTPException(status_code=400, detail="Email already exists") 
+    hashed_password = pwd_context.hash(user.password) 
+
+    user_dict = { "name": user.name, "email": user.email, "password": hashed_password, "role": user.role } 
+    result = await database.users.insert_one(user_dict) 
+    return { "message": "User registered successfully", "id": str(result.inserted_id) }

@@ -8,7 +8,22 @@ from auth import create_access_token
 from auth import verify_token, require_role
 from fastapi import Depends
 from auth import require_role
+from fastapi import Response
+from jose import jwt
+from datetime import datetime, timedelta
 
+SECRET_KEY = "mysecretkey123"
+ALGORITHM = "HS256"
+
+def create_token(user_id: str):
+    payload = {
+        "sub": user_id,
+        "exp": datetime.utcnow() + timedelta(hours=5)
+    }
+
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return token
 
 router = APIRouter()
 
@@ -43,19 +58,19 @@ async def login(data: LoginRequest):
     user = await database.users.find_one({"email": data.email})
 
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+        raise HTTPException(status_code=400, detail="User not found")
 
     if not pwd_context.verify(data.password, user["password"]):
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+        raise HTTPException(status_code=400, detail="Invalid password")
 
-    access_token = create_access_token(
-        data={"sub": str(user["_id"])}
-    )
+    token = create_token(str(user["_id"]))
 
     return {
-        "access_token": access_token,
-        "token_type": "bearer"
+        "message": "Login successful",
+        "token": token,
+        "name": user["name"]
     }
+
 
 @router.delete("/delete-all")
 async def delete_all():

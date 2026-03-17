@@ -12,7 +12,7 @@ from fastapi import Response
 from jose import jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "mysecretkey123"
+SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 
 def create_token(user_id: str):

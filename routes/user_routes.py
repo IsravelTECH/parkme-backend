@@ -48,9 +48,17 @@ async def signup(user: SignupRequest):
         "password": hashed_password
     }
 
-    await database.users.insert_one(new_user)
+    result = await database.users.insert_one(new_user)
 
-    return {"message": "User created successfully"}
+    # ✅ CREATE TOKEN (IMPORTANT)
+    token = create_token(str(result.inserted_id))
+
+    # ✅ RETURN SAME AS LOGIN
+    return {
+        "message": "User created successfully",
+        "token": token,
+        "name": user.name
+    }
 
 @router.post("/login")
 async def login(data: LoginRequest):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends , Query
 from models.parking_model import Parking
 from database import database
 from auth import require_role
@@ -164,3 +164,67 @@ async def admin_dashboard(user=Depends(require_role("admin"))):
         "completed_bookings": completed_bookings,
         "total_revenue": total_revenue
     }
+
+@router.get("/nearby")
+async def nearby(
+    lat: float,
+    lng: float,
+    max_distance: int = 3000,
+    max_price: int = 500,
+    search: str = ""
+):
+    pipeline = [
+        {
+            "$geoNear": {
+                "near": {
+                    "type": "Point",
+                    "coordinates": [lng, lat]
+                },
+                "distanceField": "distance",
+                "maxDistance": max_distance,
+                "spherical": True
+            }
+        },
+        {
+            "$match": {
+                "price_per_hour": {"$lte": max_price},
+                "available_slots": {"$gt": 0}  # ✅ only show available
+            }
+        }
+    ]
+
+    # ✅ SEARCH FILTER (name + address)
+    if search:
+        pipeline.append({
+            "$match": {
+                "$or": [
+                    {"name": {"$regex": search, "$options": "i"}},
+                    {"address": {"$regex": search, "$options": "i"}}
+                ]
+            }
+        })
+
+    # ✅ SORT BY NEAREST
+    pipeline.append({
+        "$sort": {"distance": 1}
+    })
+
+    # ✅ RUN QUERY
+    results = await database.parkings.aggregate(pipeline).to_list(100)
+
+    # ✅ FORMAT RESPONSE
+    response = []
+    for r in results:
+        response.append({
+            "id": str(r["_id"]),
+            "name": r.get("name"),
+            "address": r.get("address", "Unknown location"),
+            "lat": r["location"]["coordinates"][1],
+            "lng": r["location"]["coordinates"][0],
+            "price_per_hour": r.get("price_per_hour", 0),
+            "distance": round(r.get("distance", 0)),
+            "available_slots": r.get("available_slots", 0),
+            "amenities": r.get("amenities", {})
+        })
+
+    return {"results": response}

@@ -3,8 +3,15 @@ from routes import user_routes
 from routes import parking_routes
 from fastapi.middleware.cors import CORSMiddleware
 from routes import profile_routes
+from database import database
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_db():
+    # ✅ Create Geo Index
+    await database.parkings.create_index([("location", "2dsphere")])
+    print("✅ Geo index created")
 
 app.include_router(user_routes.router)
 app.include_router(parking_routes.router)

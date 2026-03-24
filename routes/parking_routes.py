@@ -159,12 +159,12 @@ async def nearby(
         {
             "$match": {
                 "price_per_hour": {"$lte": max_price},
-                "available_slots": {"$gt": 0}  # ✅ only show available
+                "available_slots": {"$gt": 0}
             }
         }
     ]
 
-    # ✅ SEARCH FILTER (name + address)
+    # SEARCH FILTER
     if search:
         pipeline.append({
             "$match": {
@@ -175,34 +175,32 @@ async def nearby(
             }
         })
 
-    # ✅ SORT BY NEAREST
-    pipeline.append({
-        "$sort": {"distance": 1}
-    })
+    pipeline.append({"$sort": {"distance": 1}})
 
-    # ✅ RUN QUERY
     results = await database.parkings.aggregate(pipeline).to_list(100)
 
-    # ✅ FORMAT RESPONSE
     response = []
     for r in results:
         response.append({
-    "id": str(r["_id"]),
-    "name": r.get("name"),
-    "address": r.get("address"),
+            "id": str(r["_id"]),
+            "name": r.get("name"),
+            "address": r.get("address"),
 
-    "lat": r["location"]["coordinates"][1],
-    "lng": r["location"]["coordinates"][0],
+            "lat": r["location"]["coordinates"][1],
+            "lng": r["location"]["coordinates"][0],
 
-    "price_per_hour": r.get("price_per_hour"),
-    "distance": round(r.get("distance", 0)),
+            "price_per_hour": r.get("price_per_hour"),
+            "distance": round(r.get("distance", 0)),
 
-    "available_slots": r.get("available_slots"),
-    "image": r.get("image"),
+            "available_slots": r.get("available_slots"),
+            "image": r.get("image"),
 
-    # ✅ NEW: show who added
-    "added_by": r.get("added_by", {})
-})
+            # ✅ NEW
+            "features": r.get("features", []),
+            "available_days": r.get("available_days", []),
+
+            "added_by": r.get("added_by", {})
+        })
 
     return {"results": response}
 

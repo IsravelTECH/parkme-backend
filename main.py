@@ -4,6 +4,7 @@ from routes import parking_routes
 from fastapi.middleware.cors import CORSMiddleware
 from routes import profile_routes
 from database import database
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -23,3 +24,4 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

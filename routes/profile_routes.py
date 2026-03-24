@@ -1,44 +1,75 @@
 from fastapi import APIRouter, Depends
 from database import database
 from utils.auth import get_current_user
+from datetime import datetime, timezone
 
 router = APIRouter()
+
+
+async def auto_complete_bookings():
+    now = datetime.now(timezone.utc)
+
+    # ✅ update all expired bookings
+    await database.bookings.update_many(
+        {
+            "status": "active",
+            "end_time": {"$lte": now}
+        },
+        {
+            "$set": {"status": "completed"}
+        }
+    )
 
 @router.get("/profile")
 async def get_profile(current_user = Depends(get_current_user)):
 
-    user_id = current_user["_id"]
+    await auto_complete_bookings()
 
-    # user details
-    user = await database.users.find_one({"_id": user_id})
+    user_id = str(current_user["_id"])
 
-    # user parking slots
-    slots = await database.slots.find({"owner_id": user_id}).to_list(100)
+    user = await database.users.find_one({"_id": current_user["_id"]})
 
-    # booking history
-    bookings = await database.bookings.find({"user_id": user_id}).to_list(100)
+    # ✅ parkings
+    parkings = await database.parkings.find({
+        "owner_id": user_id
+    }).to_list(100)
 
-    # ✅ Active bookings (example: status = "active")
-    active_bookings = await database.bookings.find({
+    total_slots = sum(p.get("total_slots", 0) for p in parkings)
+
+    # ✅ bookings (user side)
+    bookings = await database.bookings.find({
+        "user_id": user_id
+    }).to_list(100)
+
+    from datetime import datetime, timezone
+
+    # ✅ ACTIVE BOOKINGS (time + status)
+    active_bookings_data = await database.bookings.find({
         "user_id": user_id,
-        "status": "active"
+        "status": "active",
+        "end_time": {"$gt": datetime.now(timezone.utc)}
     }).to_list(100)
 
-    # ✅ Total earnings (from slots owned by user)
-    earnings = await database.bookings.find({
+    active_bookings = len(active_bookings_data)
+
+    # ✅ EARNINGS (active + completed)
+    earnings_data = await database.bookings.find({
         "owner_id": user_id,
-        "status": "completed"
+        "status": {"$in": ["active", "completed"]}
     }).to_list(100)
 
-    total_earnings = sum(b.get("amount", 0) for b in earnings)
+    total_earnings = sum(
+        b.get("total_price", 0)
+        for b in earnings_data
+    )
 
     return {
-        "id": str(user_id),
+        "id": user_id,
         "name": user.get("name"),
         "email": user.get("email"),
-        "phone": user.get("phone"),  # ✅ added
-        "total_slots": len(slots),
+        "phone": user.get("phone"),
+        "total_slots": total_slots,
         "total_bookings": len(bookings),
-        "active_bookings": len(active_bookings),  # ✅ added
-        "total_earnings": total_earnings  # ✅ added
+        "active_bookings": active_bookings,
+        "total_earnings": total_earnings
     }

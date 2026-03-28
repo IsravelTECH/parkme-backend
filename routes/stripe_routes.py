@@ -4,15 +4,21 @@ import os
 
 router = APIRouter()
 
-
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-
 @router.post("/create-checkout-session")
 async def create_checkout_session(request: Request):
+
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+    print("STRIPE KEY:", stripe.api_key)  # debug
+
+    if not stripe.api_key:
+        return {"error": "Stripe key missing"}
+
     try:
         data = await request.json()
-    except:
-        return {"error": "Invalid JSON received"}
+    except Exception as e:
+        print("JSON ERROR:", e)
+        data = {}
 
     amount = int(data.get("amount", 50))
 
@@ -32,8 +38,8 @@ async def create_checkout_session(request: Request):
             "quantity": 1,
         }],
         mode="payment",
-        success_url="http://127.0.0.1:5500/frontend/paymentsuccess.html",
-        cancel_url="http://127.0.0.1:5500/frontend/payment1.html",
+        success_url="https://your-frontend-url/paymentsuccess.html",
+        cancel_url="https://your-frontend-url/payment1.html",
     )
 
     return {"id": session.id}

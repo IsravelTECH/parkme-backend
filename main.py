@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes import profile_routes
 from database import database
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
 

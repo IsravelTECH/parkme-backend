@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from routes import stripe_routes
 from routes import user_routes
 from routes import parking_routes
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,7 @@ async def startup_db():
 app.include_router(user_routes.router)
 app.include_router(parking_routes.router)
 app.include_router(profile_routes.router)
+app.include_router(stripe_routes.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # allow all domains (for testing)

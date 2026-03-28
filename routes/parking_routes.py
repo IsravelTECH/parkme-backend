@@ -16,6 +16,73 @@ from typing import List, Optional
 
 router = APIRouter()
 
+
+# ✅ IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+# ✅ Convert UTC → IST string (12-hour format)
+def format_ist(dt):
+    ist_time = dt.astimezone(IST)
+    return ist_time.strftime("%I:%M %p")  # 10:00 AM
+
+
+# ✅ Countdown (minutes left)
+def get_remaining_time(end_time):
+    now = datetime.now(timezone.utc)
+    diff = end_time - now
+    minutes = int(diff.total_seconds() / 60)
+    return max(minutes, 0)
+
+
+# ✅ Serializer
+def serialize_booking(booking):
+    return {
+        "_id": str(booking.get("_id")),
+        "parking_id": str(booking.get("parking_id")),
+        "user_id": str(booking.get("user_id")),
+        "owner_id": str(booking.get("owner_id")) if booking.get("owner_id") else None,
+
+        "vehicle_number": booking.get("vehicle_number"),
+        "booking_date": booking.get("booking_date"),
+
+        # ✅ Correct time display
+        "time_range": f"{format_ist(booking['start_time'])} - {format_ist(booking['end_time'])}",
+
+        "hours": booking.get("hours"),
+        "price_per_hour": booking.get("price_per_hour"),
+        "total_price": booking.get("total_price"),
+
+        "selected_days": booking.get("selected_days"),
+
+        # ✅ Live countdown
+        "remaining_minutes": get_remaining_time(booking.get("end_time")),
+
+        "status": booking.get("status"),
+        "created_at": booking.get("created_at").astimezone(IST).strftime("%Y-%m-%d %I:%M %p")
+    }
+
+async def auto_complete_bookings():
+    now = datetime.now(timezone.utc)
+
+    expired = await database.bookings.find({
+        "status": "active",
+        "end_time": {"$lte": now}
+    }).to_list(100)
+
+    for b in expired:
+        # ✅ Mark completed
+        await database.bookings.update_one(
+            {"_id": b["_id"]},
+            {"$set": {"status": "completed"}}
+        )
+
+        # ✅ RETURN SLOT BACK
+        await database.parkings.update_one(
+            {"_id": ObjectId(b["parking_id"])},
+            {"$inc": {"available_slots": 1}}
+        )
+
 @router.post("/create-parking")
 async def create_parking(
     parking: Parking,
@@ -41,15 +108,20 @@ async def get_all_parkings():
 
     return parkings
 
-
 @router.post("/book-slot")
 async def book_slot(data: dict, current_user = Depends(get_current_user)):
 
     user_id = str(current_user["_id"])
     parking_id = data.get("parking_id")
-    hours = data.get("hours")
+    vehicle_number = data.get("vehicle_number")
+    booking_date = data.get("booking_date")
+    start_time_input = data.get("start_time")
+    end_time_input = data.get("end_time")
+    selected_days = data.get("selected_days")
 
-    # ✅ get parking details
+    if not all([parking_id, vehicle_number, booking_date, start_time_input, end_time_input, selected_days]):
+        return {"error": "Missing required fields"}
+
     parking = await database.parkings.find_one({"_id": ObjectId(parking_id)})
 
     if not parking:
@@ -58,34 +130,72 @@ async def book_slot(data: dict, current_user = Depends(get_current_user)):
     if parking.get("available_slots", 0) <= 0:
         return {"error": "No slots available"}
 
-    owner_id = parking.get("owner_id")
-    price_per_hour = parking.get("price_per_hour", 0)
+    # ✅ STEP 1: Parse as IST (NOT UTC ❗)
+    start_local = datetime.strptime(
+        f"{booking_date} {start_time_input}", "%Y-%m-%d %H:%M"
+    ).replace(tzinfo=IST)
 
+    end_local = datetime.strptime(
+        f"{booking_date} {end_time_input}", "%Y-%m-%d %H:%M"
+    ).replace(tzinfo=IST)
+
+    if end_local <= start_local:
+        return {"error": "End time must be after start time"}
+
+    # ✅ STEP 2: Convert to UTC for DB storage
+    start_datetime = start_local.astimezone(timezone.utc)
+    end_datetime = end_local.astimezone(timezone.utc)
+
+    hours = int((end_datetime - start_datetime).total_seconds() / 3600)
+
+    # ✅ Day validation
+    booking_day = start_local.strftime("%a")
+    available_days = parking.get("available_days", [])
+
+    for day in selected_days:
+        if day not in available_days:
+            return {"error": f"{day} is not available"}
+
+    if booking_day not in selected_days:
+        return {"error": f"Booking date must match selected_days"}
+
+    price_per_hour = parking.get("price_per_hour", 0)
     total_price = hours * price_per_hour
 
-    # ✅ CREATE BOOKING (FIXED)
+    owner_id = parking.get("owner_id")
+
     booking = {
-    "parking_id": parking_id,
-    "user_id": user_id,
-    "owner_id": owner_id,
-    "hours": hours,
-    "total_price": total_price,
-    "status": "active",
-    "booking_time": datetime.now(timezone.utc),
+        "parking_id": parking_id,
+        "user_id": user_id,
+        "owner_id": owner_id,
+        "vehicle_number": vehicle_number,
 
-    # ✅ ADD THIS
-    "end_time": datetime.now(timezone.utc) + timedelta(hours=hours)
-}
+        "booking_date": booking_date,
+        "start_time": start_datetime,  # stored UTC
+        "end_time": end_datetime,
 
-    await database.bookings.insert_one(booking)
+        "hours": hours,
+        "price_per_hour": price_per_hour,
+        "total_price": total_price,
 
-    # ✅ reduce available slots
+        "selected_days": selected_days,
+
+        "status": "active",
+        "created_at": datetime.now(timezone.utc)
+    }
+
+    result = await database.bookings.insert_one(booking)
+    booking["_id"] = result.inserted_id
+
     await database.parkings.update_one(
         {"_id": ObjectId(parking_id)},
         {"$inc": {"available_slots": -1}}
     )
 
-    return {"message": "Booking successful"}
+    return {
+        "message": "Booking successful",
+        "booking_details": serialize_booking(booking)
+    }
 
 @router.put("/complete-booking/{booking_id}")
 async def complete_booking(booking_id: str):
@@ -164,7 +274,7 @@ async def nearby(
         }
     ]
 
-    # SEARCH FILTER
+    # ✅ SEARCH FILTER
     if search:
         pipeline.append({
             "$match": {
@@ -175,6 +285,8 @@ async def nearby(
             }
         })
 
+    await auto_complete_bookings()
+    
     pipeline.append({"$sort": {"distance": 1}})
 
     results = await database.parkings.aggregate(pipeline).to_list(100)
@@ -182,7 +294,10 @@ async def nearby(
     response = []
     for r in results:
         response.append({
-            "id": str(r["_id"]),
+            # ✅ BOTH IDs
+            "id": str(r["_id"]),              # UI use
+            "parking_id": str(r["_id"]),      # API use (booking)
+
             "name": r.get("name"),
             "address": r.get("address"),
 
@@ -195,7 +310,6 @@ async def nearby(
             "available_slots": r.get("available_slots"),
             "image": r.get("image"),
 
-            # ✅ NEW
             "features": r.get("features", []),
             "available_days": r.get("available_days", []),
 
@@ -203,7 +317,6 @@ async def nearby(
         })
 
     return {"results": response}
-
 
 @router.post("/add-parking")
 async def add_parking(
@@ -271,6 +384,7 @@ async def add_parking(
         return {
             "message": "Parking added successfully",
             "id": str(result.inserted_id),
+            "parking_id": str(result.inserted_id),
             "image": file_path
         }
 
@@ -321,6 +435,7 @@ async def get_my_dashboard(current_user: dict = Depends(get_current_user)):
 
         parking_list.append({
             "id": str(p["_id"]),
+            "parking_id": str(p["_id"]),
             "name": p.get("name"),
             "city": p.get("city"),
             "image": p.get("image"),
@@ -395,6 +510,7 @@ async def update_parking(
         "message": "Parking space updated successfully",
         "parking_space": {
             "id": str(updated_parking["_id"]),
+            "parking_id": str(updated_parking["_id"]),
             "name": updated_parking["name"],
             "city": updated_parking["city"],
             "landmark": updated_parking["landmark"],

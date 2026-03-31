@@ -29,3 +29,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
+    
+
+def require_owner(user=Depends(get_current_user)):
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Access denied")
+    return user

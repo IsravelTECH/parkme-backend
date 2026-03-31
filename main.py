@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from routes.stripe_routes import router as stripe_router
 from routes import user_routes
 from routes import parking_routes
+from routes import booking_routes
+from routes import admin_routes
 from fastapi.middleware.cors import CORSMiddleware
 from routes import profile_routes
 from database import database
@@ -20,6 +22,8 @@ async def startup_db():
 app.include_router(user_routes.router)
 app.include_router(parking_routes.router)
 app.include_router(profile_routes.router)
+app.include_router(booking_routes.router)
+app.include_router(admin_routes.router) 
 app.include_router(stripe_router)
 app.add_middleware(
     CORSMiddleware,

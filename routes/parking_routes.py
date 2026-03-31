@@ -165,9 +165,14 @@ async def book_slot(data: dict, current_user = Depends(get_current_user)):
     owner_id = parking.get("owner_id")
 
     booking = {
-        "parking_id": parking_id,
-        "user_id": user_id,
-        "owner_id": owner_id,
+    "parking_id": parking_id,
+    "user_id": user_id,
+    "owner_id": owner_id,
+
+    # ✅ ADD THESE 3 LINES (VERY IMPORTANT)
+    "parking_name": parking.get("name"),
+    "parking_address": parking.get("address"),
+    "image_url": parking.get("image"),
         "vehicle_number": vehicle_number,
 
         "booking_date": booking_date,
@@ -219,32 +224,6 @@ async def complete_booking(booking_id: str):
 
     return {"message": "Booking completed"}
 
-@router.get("/admin-dashboard")
-async def admin_dashboard(user=Depends(require_role("admin"))):
-
-    total_users = await database.users.count_documents({})
-    total_owners = await database.users.count_documents({"role": "owner"})
-    total_seekers = await database.users.count_documents({"role": "seeker"})
-
-    total_parkings = await database.parkings.count_documents({})
-    total_bookings = await database.bookings.count_documents({})
-    active_bookings = await database.bookings.count_documents({"status": "active"})
-    completed_bookings = await database.bookings.count_documents({"status": "completed"})
-
-    total_revenue = 0
-    async for booking in database.bookings.find():
-        total_revenue += booking.get("total_price", 0)
-
-    return {
-        "total_users": total_users,
-        "total_owners": total_owners,
-        "total_seekers": total_seekers,
-        "total_parkings": total_parkings,
-        "total_bookings": total_bookings,
-        "active_bookings": active_bookings,
-        "completed_bookings": completed_bookings,
-        "total_revenue": total_revenue
-    }
 
 @router.get("/nearby")
 async def nearby(

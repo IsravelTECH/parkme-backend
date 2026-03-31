@@ -45,7 +45,8 @@ async def signup(user: SignupRequest):
         "name": user.name,
         "email": user.email,
         "phone": user.phone,
-        "password": hashed_password
+        "password": hashed_password,
+        "role": "seeker"  # default role
     }
 
     result = await database.users.insert_one(new_user)
@@ -57,7 +58,8 @@ async def signup(user: SignupRequest):
     return {
         "message": "User created successfully",
         "token": token,
-        "name": user.name
+        "name": user.name,
+        "role": user.role
     }
 
 @router.post("/login")
@@ -76,7 +78,8 @@ async def login(data: LoginRequest):
     return {
         "message": "Login successful",
         "token": token,
-        "name": user["name"]
+        "name": user["name"],
+        "role": user["role"]
     }
 
 
@@ -92,58 +95,3 @@ async def protected_route(user=Depends(verify_token)):
         "user_data": user
     }
 
-@router.get("/owner-dashboard")
-async def owner_dashboard(user=Depends(require_role("owner"))):
-    
-    # 1️⃣ Get all parkings of owner
-    owner_parkings = []
-    async for parking in database.parkings.find(
-        {"owner_id": user["sub"]}
-    ):
-        owner_parkings.append(parking)
-
-    parking_ids = [str(p["_id"]) for p in owner_parkings]
-
-    # 2️⃣ Get bookings for those parkings
-    total_bookings = 0
-    active_bookings = 0
-    completed_bookings = 0
-    total_earnings = 0
-
-    async for booking in database.bookings.find(
-        {"parking_id": {"$in": parking_ids}}
-    ):
-        total_bookings += 1
-
-        if booking.get("status") == "active":
-            active_bookings += 1
-
-        if booking.get("status") == "completed":
-            completed_bookings += 1
-
-        total_earnings += booking.get("total_price", 0)
-
-    return {
-        "total_parkings": len(owner_parkings),
-        "total_bookings": total_bookings,
-        "active_bookings": active_bookings,
-        "completed_bookings": completed_bookings,
-        "total_earnings": total_earnings
-    }
-
-@router.get("/seeker-dashboard")
-async def seeker_dashboard(user=Depends(require_role("seeker"))):
-    return {"message": "Welcome Seeker", "user": user}
-
-
-@router.post("/register") 
-async def register(user: User): 
-# 🔎 Check if email already exists 
-    existing_user = await database.users.find_one({"email": user.email}) 
-    if existing_user: 
-       raise HTTPException(status_code=400, detail="Email already exists") 
-    hashed_password = pwd_context.hash(user.password) 
-
-    user_dict = { "name": user.name, "email": user.email, "password": hashed_password, "role": user.role } 
-    result = await database.users.insert_one(user_dict) 
-    return { "message": "User registered successfully", "id": str(result.inserted_id) }

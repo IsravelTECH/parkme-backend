@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from bson import ObjectId
+from fastapi import APIRouter, HTTPException, Query
 from models.user_model import SignupRequest
 from models.user_model import LoginRequest  
+from models.user_model import ReviewRequest
 from models.user_model import User
 from database import database
 from passlib.context import CryptContext
@@ -11,6 +13,7 @@ from auth import require_role
 from fastapi import Response
 from jose import jwt
 from datetime import datetime, timedelta
+from typing import Optional 
 
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
@@ -95,3 +98,85 @@ async def protected_route(user=Depends(verify_token)):
         "user_data": user
     }
 
+
+
+# =========================
+# ✅ POST Review (Logged User)
+# =========================
+@router.post("/reviews")
+async def create_review(
+    review: ReviewRequest,
+    user=Depends(verify_token)  # Get logged-in user
+    
+):
+
+    if review.rating < 1 or review.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    user_data = await database.users.find_one({"_id": ObjectId(user["sub"])})
+    review_data = {
+        "user_id": user["sub"],
+        "name": user_data["name"],
+        "rating": review.rating,
+        "message": review.message,
+        "created_at": datetime.utcnow()
+    }
+
+    result = await database.reviews.insert_one(review_data)
+
+    return {
+        "message": "Review submitted successfully",
+        "review_id": str(result.inserted_id)
+    }
+
+
+# =========================
+# ✅ GET ALL Reviews
+# =========================
+@router.get("/reviews")
+async def get_all_reviews():
+
+    reviews_cursor = database.reviews.find().sort("created_at", -1)
+
+    reviews = []
+
+    async for review in reviews_cursor:
+        reviews.append({
+            "id": str(review["_id"]),
+            "name": review["name"],
+            "rating": review["rating"],
+            "message": review["message"],
+            "created_at": review["created_at"]
+        })
+
+    return {
+        "total": len(reviews),
+        "reviews": reviews
+    }
+
+# =========================
+# ✅ DELETE ALL REVIEWS (Optional)
+# =========================
+@router.delete("/reviews/delete-all")
+async def delete_all_reviews():
+    await database.reviews.delete_many({})
+    return {"message": "All reviews deleted"}
+
+@router.get("/search")
+async def search_parking(query: str):
+
+    cursor = database.parkings.find({
+        "$or": [
+            {"name": {"$regex": query, "$options": "i"}},
+            {"address": {"$regex": query, "$options": "i"}}
+        ]
+    })
+
+    results = await cursor.to_list(length=100)
+
+    # 🔥 Convert ObjectId to string
+    for r in results:
+        r["_id"] = str(r["_id"])
+
+    return {
+        "results": results
+    }

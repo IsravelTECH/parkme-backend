@@ -15,3 +15,10 @@ class User(BaseModel):
     email: EmailStr 
     password: str 
     role: str # owner or seeker
+
+# =========================
+# ✅ Review Model
+# =========================
+class ReviewRequest(BaseModel):
+    rating: int
+    message: str

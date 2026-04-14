@@ -43,8 +43,7 @@ async def signup(user: SignupRequest):
         raise HTTPException(status_code=400, detail="Email already registered")
 
     hashed_password = pwd_context.hash(user.password)
-
-    created_time = datetime.now(IST)   # ✅ IST time
+    created_time = datetime.now(IST)
 
     new_user = {
         "name": user.name,
@@ -54,7 +53,7 @@ async def signup(user: SignupRequest):
         "role": "seeker",
         "created_at": created_time,
         "last_login": None,
-        "login_history": []   # ✅ important
+        "login_history": []
     }
 
     result = await database.users.insert_one(new_user)

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends
 from database import database
 from utils.auth import get_current_user
 from datetime import datetime, timezone
+from fastapi import UploadFile, File
+import os
 
 router = APIRouter()
 
@@ -68,8 +70,32 @@ async def get_profile(current_user = Depends(get_current_user)):
         "name": user.get("name"),
         "email": user.get("email"),
         "phone": user.get("phone"),
+        "profile_image": user.get("profile_image"), 
         "total_slots": total_slots,
         "total_bookings": len(bookings),
         "active_bookings": active_bookings,
         "total_earnings": total_earnings
     }
+
+@router.post("/upload-profile-image")
+async def upload_profile_image(
+    file: UploadFile = File(...),
+    current_user = Depends(get_current_user)
+):
+    user_id = str(current_user["_id"])
+
+    os.makedirs("static/profile", exist_ok=True)  # ✅ auto create
+
+    file_path = f"static/profile/{user_id}.png"
+
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+
+    image_url = f"http://127.0.0.1:8000/{file_path}"
+
+    await database.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": {"profile_image": image_url}}
+    )
+
+    return {"message": "Uploaded", "image_url": image_url}

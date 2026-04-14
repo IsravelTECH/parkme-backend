@@ -8,11 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes import profile_routes
 from database import database
 from fastapi.staticfiles import StaticFiles
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
-
+# ✅ create folders before mounting
+os.makedirs("static/profile", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)
 @app.on_event("startup")
 async def startup_db():
     # ✅ Create Geo Index
@@ -33,3 +36,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -14,6 +14,9 @@ from fastapi import Response
 from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional 
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata") 
 
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
@@ -35,34 +38,35 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @router.post("/signup")
 async def signup(user: SignupRequest):
 
-    # Check if email already exists
     existing_user = await database.users.find_one({"email": user.email})
-
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Hash password
     hashed_password = pwd_context.hash(user.password)
+
+    created_time = datetime.now(IST)   # ✅ IST time
 
     new_user = {
         "name": user.name,
         "email": user.email,
         "phone": user.phone,
         "password": hashed_password,
-        "role": "seeker"  # default role
+        "role": "seeker",
+        "created_at": created_time,
+        "last_login": None,
+        "login_history": []   # ✅ important
     }
 
     result = await database.users.insert_one(new_user)
 
-    # ✅ CREATE TOKEN (IMPORTANT)
     token = create_token(str(result.inserted_id))
 
-    # ✅ RETURN SAME AS LOGIN
     return {
         "message": "User created successfully",
         "token": token,
         "name": user.name,
-        "role": user.role
+        "role": "seeker",
+        "created_at": created_time
     }
 
 @router.post("/login")
@@ -76,15 +80,35 @@ async def login(data: LoginRequest):
     if not pwd_context.verify(data.password, user["password"]):
         raise HTTPException(status_code=400, detail="Invalid password")
 
+    login_time = datetime.now(IST)   # ✅ IST time
+
+    # ✅ Fix old users (no created_at)
+    if not user.get("created_at"):
+        await database.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"created_at": login_time}}
+        )
+        user["created_at"] = login_time
+
+    await database.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {"last_login": login_time},
+            "$push": {"login_history": login_time}
+        }
+    )
+
     token = create_token(str(user["_id"]))
 
     return {
         "message": "Login successful",
         "token": token,
         "name": user["name"],
-        "role": user["role"]
+        "role": user["role"],
+        "created_at": user.get("created_at"),
+        "login_history": user.get("login_history", []) + [login_time],
+        "last_login": login_time
     }
-
 
 @router.delete("/delete-all")
 async def delete_all():
@@ -118,7 +142,7 @@ async def create_review(
         "name": user_data["name"],
         "rating": review.rating,
         "message": review.message,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(IST)
     }
 
     result = await database.reviews.insert_one(review_data)

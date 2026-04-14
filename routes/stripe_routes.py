@@ -38,8 +38,8 @@ async def create_checkout_session(request: Request):
             "quantity": 1,
         }],
         mode="payment",
-        success_url="http://127.0.0.1:5500/Frontend/paymentsuccess.html",
-        cancel_url="http://127.0.0.1:5500/Frontend/payment1.html",
+        success_url="https://effortless-choux-d62f15.netlify.app/Frontend/paymentsuccess.html",
+        cancel_url="https://effortless-choux-d62f15.netlify.app/Frontend/payment1.html",
     )
 
     return {"id": session.id}

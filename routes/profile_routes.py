@@ -91,7 +91,7 @@ async def upload_profile_image(
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    image_url = f"http://127.0.0.1:8000/{file_path}"
+    image_url = f"https://parkme-backend.onrender.com/{file_path}"
 
     await database.users.update_one(
         {"_id": current_user["_id"]},

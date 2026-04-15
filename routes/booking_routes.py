@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from utils.auth import get_current_user
 
+
 router = APIRouter()
 
 client = MongoClient(os.getenv("MONGO_URL"))

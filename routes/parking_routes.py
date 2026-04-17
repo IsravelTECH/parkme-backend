@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends , Query , Form , UploadFile , File 
+from pydantic import BaseModel
 from pytest import Session 
 from routes.profile_routes import auto_complete_bookings
 from models.parking_model import Parking , ParkingCreate
@@ -15,6 +16,9 @@ from typing import List, Optional
 
 
 router = APIRouter()
+
+class DeleteRequest(BaseModel):
+    ids: List[int]
 
 
 # ✅ IST timezone
@@ -83,21 +87,20 @@ async def auto_complete_bookings():
             {"$inc": {"available_slots": 1}}
         )
 
-@router.post("/create-parking")
-async def create_parking(
-    parking: Parking,
-    user=Depends(require_role("owner"))
-):
-    parking_dict = parking.dict()
-    parking_dict["owner_id"] = user["sub"]
-    parking_dict["available_slots"] = parking.total_slots
+@router.delete("/delete-parking/{parking_id}")
+async def delete_parking(parking_id: str, user=Depends(get_current_user)):
 
-    result = await database.parkings.insert_one(parking_dict)
+    parking = await database.parkings.find_one({
+        "_id": ObjectId(parking_id),
+        "owner_id": str(user["_id"])
+    })
 
-    return {
-        "message": "Parking created successfully",
-        "id": str(result.inserted_id)
-    }
+    if not parking:
+        raise HTTPException(status_code=404, detail="Parking not found")
+
+    await database.parkings.delete_one({"_id": ObjectId(parking_id)})
+
+    return {"message": "Parking deleted successfully"}
 
 @router.get("/parkings")
 async def get_all_parkings():

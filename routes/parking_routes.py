@@ -2,11 +2,9 @@ from fastapi import APIRouter, Depends , Query , Form , UploadFile , File
 from pydantic import BaseModel
 from pytest import Session 
 from routes.profile_routes import auto_complete_bookings
-from models.parking_model import Parking , ParkingCreate
 from database import database
 from auth import require_role 
 from datetime import datetime, timedelta, timezone
-from models.booking_model import Booking
 from bson import ObjectId
 from fastapi import HTTPException
 from utils.auth import get_current_user

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends , HTTPException
 from pymongo import MongoClient
 from bson import ObjectId
 import os
 from datetime import datetime
 from utils.auth import get_current_user
+from database import database
 
 
 router = APIRouter()
@@ -116,13 +117,14 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
     ])
 
     # =========================
-    # ✅ ACTIVE BOOKINGS (ALL ACTIVE)
+    # ✅ ACTIVE BOOKINGS
     # =========================
     active_bookings = []
 
     for b in bookings:
         if (b.get("status") or "").lower() == "active":
             active_bookings.append({
+                "booking_id": str(b.get("_id")),  # ✅ added
                 "parking_name": b.get("parking_name", "N/A"),
                 "address": b.get("parking_address", "N/A"),
                 "vehicle": b.get("vehicle_number", "N/A"),
@@ -132,15 +134,18 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
             })
 
     # =========================
-    # ✅ HISTORY (ONLY COMPLETED)
+    # ✅ HISTORY (COMPLETED + CANCELLED)
     # =========================
     history = []
 
     for b in bookings:
-        if (b.get("status") or "").lower() != "completed":
+        status = (b.get("status") or "").lower()
+
+        if status not in ["completed", "cancelled"]:
             continue
 
         history.append({
+            "booking_id": str(b.get("_id")),  # ✅ added
             "parking_name": b.get("parking_name", "N/A"),
             "vehicle": b.get("vehicle_number", "N/A"),
             "time": f"{format_time(b.get('start_time'))} - {format_time(b.get('end_time'))}",
@@ -155,9 +160,37 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
     return {
         "summary": {
             "total_bookings": total_bookings,
-            "cancelled_bookings": cancelled_count,
+            "cancelled_bookings": cancelled_count,  # ✅ already correct
             "total_spent": total_spent
         },
-        "active_booking": active_bookings,  # 🔥 NOW LIST
+        "active_booking": active_bookings,
         "history": history
     }
+
+@router.put("/cancel-booking/{booking_id}")
+async def cancel_booking(booking_id: str, user=Depends(get_current_user)):
+
+    # ✅ FIXED user_id
+    booking = await database.bookings.find_one({
+        "_id": ObjectId(booking_id),
+        "user_id": str(user["_id"])   # 🔥 FIX HERE
+    })
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if (booking.get("status") or "").lower() == "cancelled":
+        raise HTTPException(status_code=400, detail="Already cancelled")
+
+    # ✅ update status
+    await database.bookings.update_one(
+        {"_id": ObjectId(booking_id)},
+        {
+            "$set": {
+                "status": "cancelled",
+                "cancelled_at": datetime.utcnow()
+            }
+        }
+    )
+
+    return {"message": "Booking cancelled successfully"}

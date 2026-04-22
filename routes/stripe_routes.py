@@ -9,18 +9,21 @@ async def create_checkout_session(request: Request):
 
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
+    print("STRIPE KEY:", stripe.api_key)  # debug
+
     if not stripe.api_key:
         return {"error": "Stripe key missing"}
 
     try:
         data = await request.json()
-    except:
+    except Exception as e:
+        print("JSON ERROR:", e)
         data = {}
 
     amount = int(data.get("amount", 0))
 
-    if amount <= 0:
-        return {"error": "Invalid amount"}
+    if amount < 0:
+        amount = 0
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
@@ -30,7 +33,7 @@ async def create_checkout_session(request: Request):
                 "product_data": {
                     "name": "Parking Booking",
                 },
-                "unit_amount": amount * 100,  # ₹10 → 1000 paise
+                "unit_amount": amount * 100,
             },
             "quantity": 1,
         }],

@@ -22,8 +22,8 @@ async def create_checkout_session(request: Request):
 
     amount = int(data.get("amount", 0))
 
-    if amount < 0:
-        amount = 0
+    if amount < 50:
+        amount = 50
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],

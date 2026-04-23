@@ -186,17 +186,12 @@ async def book_slot(data: dict, current_user = Depends(get_current_user)):
 
         "selected_days": selected_days,
 
-        "status": "active",
+        "status": "pending",
         "created_at": datetime.now(timezone.utc)
     }
 
     result = await database.bookings.insert_one(booking)
     booking["_id"] = result.inserted_id
-
-    await database.parkings.update_one(
-        {"_id": ObjectId(parking_id)},
-        {"$inc": {"available_slots": -1}}
-    )
 
     return {
         "message": "Booking successful",
@@ -211,19 +206,22 @@ async def complete_booking(booking_id: str):
     if not booking:
         return {"error": "Booking not found"}
 
-    # ✅ update status
+    if booking["status"] == "completed":
+        return {"message": "Already completed"}
+
+    # ✅ Decrease slot ONLY HERE
+    await database.parkings.update_one(
+        {"_id": ObjectId(booking["parking_id"])},
+        {"$inc": {"available_slots": -1}}
+    )
+
+    # ✅ Mark completed
     await database.bookings.update_one(
         {"_id": ObjectId(booking_id)},
         {"$set": {"status": "completed"}}
     )
 
-    # ✅ increase available slots back
-    await database.parkings.update_one(
-        {"_id": ObjectId(booking["parking_id"])},
-        {"$inc": {"available_slots": 1}}
-    )
-
-    return {"message": "Booking completed"}
+    return {"message": "Booking confirmed & slot reserved"}
 
 
 @router.get("/nearby")

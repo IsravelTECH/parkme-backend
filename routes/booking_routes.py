@@ -233,9 +233,16 @@ async def verify_payment(session_id: str):
         return {"error": "Booking not found"}
 
     if booking.get("status") != "active":
+        # ✅ Activate booking
         await database.bookings.update_one(
             {"_id": ObjectId(booking_id)},
             {"$set": {"status": "active"}}
+        )
+
+            # ✅ 🔥 DECREASE SLOT HERE
+        await database.parkings.update_one(
+            {"_id": ObjectId(booking["parking_id"])},
+            {"$inc": {"available_slots": -1}}
         )
         booking["status"] = "active"
 

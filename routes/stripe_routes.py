@@ -38,7 +38,11 @@ async def create_checkout_session(request: Request):
             "quantity": 1,
         }],
         mode="payment",
-        success_url="https://effortless-choux-d62f15.netlify.app/paymentsuccess.html",
+            # ✅ IMPORTANT
+        metadata={
+            "booking_id": data.get("booking_id")
+        },
+        success_url="https://effortless-choux-d62f15.netlify.app/paymentsuccess.html?session_id={CHECKOUT_SESSION_ID}",
         cancel_url="https://effortless-choux-d62f15.netlify.app/payment1.html",
     )
 

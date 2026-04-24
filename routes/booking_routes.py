@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends , HTTPException
 from pymongo import MongoClient
 from bson import ObjectId
 import os
+import stripe
 from datetime import datetime
 from utils.auth import get_current_user
 from database import database
@@ -110,6 +111,11 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
         if (b.get("status") or "").lower() == "cancelled"
     ])
 
+    pending_count = len([
+        b for b in bookings
+        if (b.get("status") or "").lower() == "pending"
+    ])
+
     total_spent = sum([
         float(b.get("total_price", 0))
         for b in bookings
@@ -141,7 +147,7 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
     for b in bookings:
         status = (b.get("status") or "").lower()
 
-        if status not in ["completed", "cancelled"]:
+        if status not in ["completed", "cancelled", "pending"]:
             continue
 
         history.append({
@@ -161,6 +167,7 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
         "summary": {
             "total_bookings": total_bookings,
             "cancelled_bookings": cancelled_count,  # ✅ already correct
+            "pending_bookings": pending_count, 
             "total_spent": total_spent
         },
         "active_booking": active_bookings,
@@ -170,10 +177,9 @@ def get_user_dashboard(current_user: dict = Depends(get_current_user)):
 @router.put("/cancel-booking/{booking_id}")
 async def cancel_booking(booking_id: str, user=Depends(get_current_user)):
 
-    # ✅ FIXED user_id
     booking = await database.bookings.find_one({
         "_id": ObjectId(booking_id),
-        "user_id": str(user["_id"])   # 🔥 FIX HERE
+        "user_id": str(user["_id"])
     })
 
     if not booking:
@@ -182,7 +188,9 @@ async def cancel_booking(booking_id: str, user=Depends(get_current_user)):
     if (booking.get("status") or "").lower() == "cancelled":
         raise HTTPException(status_code=400, detail="Already cancelled")
 
-    # ✅ update status
+    parking_id = booking.get("parking_id")
+
+    # ✅ Update booking
     await database.bookings.update_one(
         {"_id": ObjectId(booking_id)},
         {
@@ -193,4 +201,65 @@ async def cancel_booking(booking_id: str, user=Depends(get_current_user)):
         }
     )
 
+    # ✅ ADD SLOT BACK
+    if parking_id:
+        await database.parkings.update_one(
+            {"_id": ObjectId(parking_id)},
+            {"$inc": {"available_slots": 1}}
+        )
+
     return {"message": "Booking cancelled successfully"}
+
+
+@router.get("/verify-payment/{session_id}")
+async def verify_payment(session_id: str):
+
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+    session = stripe.checkout.Session.retrieve(session_id)
+
+    if session.payment_status != "paid":
+        return {"error": "Payment not completed"}
+
+    # ✅ FIXED
+    booking_id = session.metadata["booking_id"] if session.metadata and "booking_id" in session.metadata else None
+
+    if not booking_id:
+        return {"error": "Booking ID missing"}
+
+    booking = await database.bookings.find_one({"_id": ObjectId(booking_id)})
+
+    if not booking:
+        return {"error": "Booking not found"}
+
+    if booking.get("status") != "active":
+        await database.bookings.update_one(
+            {"_id": ObjectId(booking_id)},
+            {"$set": {"status": "active"}}
+        )
+        booking["status"] = "active"
+
+    parking = await database.parkings.find_one({
+        "_id": ObjectId(booking["parking_id"])
+    })
+
+    parking_name = parking.get("name") if parking else "N/A"
+    location = parking.get("address") if parking else "N/A"
+
+    start_time = booking.get("start_time")
+    end_time = booking.get("end_time")
+
+    return {
+        "message": "Payment verified & booking activated",
+        "booking_details": {
+            "booking_id": str(booking["_id"]),
+            "parking_name": parking_name,
+            "location": location,
+            "date": start_time.strftime("%Y-%m-%d"),
+            "time": f"{start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}",
+            "payment_method": "Card (Stripe)",
+            "amount_paid": booking.get("total_price"),
+            "vehicle_number": booking.get("vehicle_number"),
+            "status": booking.get("status")
+        }
+    }

@@ -221,7 +221,6 @@ async def verify_payment(session_id: str):
     if session.payment_status != "paid":
         return {"error": "Payment not completed"}
 
-    # ✅ FIXED
     booking_id = session.metadata["booking_id"] if session.metadata and "booking_id" in session.metadata else None
 
     if not booking_id:
@@ -232,19 +231,26 @@ async def verify_payment(session_id: str):
     if not booking:
         return {"error": "Booking not found"}
 
-    if booking.get("status") != "active":
-        # ✅ Activate booking
-        await database.bookings.update_one(
-            {"_id": ObjectId(booking_id)},
-            {"$set": {"status": "active"}}
-        )
+    # ✅ IMPORTANT: KEEP THIS INSIDE FUNCTION
+    if booking.get("status") == "active":
+        return {"message": "Already processed"}
 
-            # ✅ 🔥 DECREASE SLOT HERE
-        await database.parkings.update_one(
-            {"_id": ObjectId(booking["parking_id"])},
-            {"$inc": {"available_slots": -1}}
-        )
-        booking["status"] = "active"
+    # ✅ Activate booking
+    await database.bookings.update_one(
+        {"_id": ObjectId(booking_id)},
+        {"$set": {"status": "active"}}
+    )
+
+    # ✅ Decrease slot
+    await database.parkings.update_one(
+        {
+            "_id": ObjectId(booking["parking_id"]),
+            "available_slots": {"$gt": 0}
+        },
+        {"$inc": {"available_slots": -1}}
+    )
+
+    booking["status"] = "active"
 
     parking = await database.parkings.find_one({
         "_id": ObjectId(booking["parking_id"])

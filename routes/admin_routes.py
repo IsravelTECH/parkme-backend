@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends , Query
+from fastapi import APIRouter, Depends, Query
 from database import database
 from utils.auth import require_owner
 from bson import ObjectId
+from bson.errors import InvalidId
 from datetime import datetime
 import re
 
@@ -47,7 +48,7 @@ async def admin_dashboard(user=Depends(require_owner)):
         {
             "$group": {
                 "_id": None,
-                "total": {"$sum": "$amount"}
+                "total": {"$sum": "$total_price"}
             }
         }
     ]
@@ -228,11 +229,13 @@ async def review_stats():
 @router.get("/admin/global-search")
 async def global_search(query: str = Query(...), user=Depends(require_owner)):
 
+    safe_query = re.escape(query.strip())
+
     # ================= USERS =================
     users_cursor = users_collection.find({
         "$or": [
-            {"name": {"$regex": query, "$options": "i"}},
-            {"email": {"$regex": query, "$options": "i"}}
+            {"name": {"$regex": safe_query, "$options": "i"}},
+            {"email": {"$regex": safe_query, "$options": "i"}}
         ]
     }, {"password": 0})
 
@@ -251,8 +254,8 @@ async def global_search(query: str = Query(...), user=Depends(require_owner)):
     # ================= SPACES =================
     spaces_cursor = spaces_collection.find({
         "$or": [
-            {"name": {"$regex": query, "$options": "i"}},
-            {"address": {"$regex": query, "$options": "i"}}
+            {"name": {"$regex": safe_query, "$options": "i"}},
+            {"address": {"$regex": safe_query, "$options": "i"}}
         ]
     })
 

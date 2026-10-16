@@ -37,9 +37,10 @@ app = FastAPI(title="ParkMe API", lifespan=lifespan)
 # Setup CORS
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_env.strip():
-    origins = [orig.strip() for orig in allowed_origins_env.split(",") if orig.strip()]
+    origins = [orig.strip().rstrip("/") for orig in allowed_origins_env.split(",") if orig.strip()]
 else:
     origins = [
+        "https://parkme-six.vercel.app",
         "https://effortless-choux-d62f15.netlify.app",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
@@ -47,14 +48,20 @@ else:
         "http://127.0.0.1:5501",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3005",
+        "http://127.0.0.1:3005",
         "http://localhost:8000",
         "http://127.0.0.1:8000"
     ]
 
+# Always ensure the deployed frontend is permitted
+if "https://parkme-six.vercel.app" not in origins:
+    origins.append("https://parkme-six.vercel.app")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:[0-9]+)?|https://.*\.vercel\.app|https://.*\.netlify\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -288,11 +288,18 @@ async def add_parking(
     available_slots: int = Form(...),
     features: List[str] = Form(...),
     available_days: List[str] = Form(...),
-    image: UploadFile = File(...),
+    image: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
     user=Depends(get_current_user)
 ):
     try:
-        file_path = await save_uploaded_image(image, subfolder="uploads")
+        default_img = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=800&q=80"
+        if image_url and image_url.strip():
+            file_path = image_url.strip()
+        elif image and image.filename:
+            file_path = await save_uploaded_image(image, subfolder="uploads")
+        else:
+            file_path = default_img
 
         parking_doc = {
             "name": name.strip(),
@@ -309,6 +316,7 @@ async def add_parking(
             "features": features,
             "available_days": available_days,
             "image": file_path,
+            "images": [file_path],
             "owner_id": str(user["_id"]),
             "added_by": {
                 "name": user.get("name"),
@@ -396,6 +404,9 @@ async def update_parking(
     days: List[str] = Form(...),
     features: List[str] = Form(...),
     image: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
+    lat: Optional[float] = Form(None),
+    lng: Optional[float] = Form(None),
     user=Depends(get_current_user)
 ):
     parking_space = await database.parkings.find_one({
@@ -407,7 +418,9 @@ async def update_parking(
         raise HTTPException(status_code=404, detail="Parking space not found")
 
     image_path = parking_space.get("image")
-    if image and image.filename:
+    if image_url and image_url.strip():
+        image_path = image_url.strip()
+    elif image and image.filename:
         image_path = await save_uploaded_image(image, subfolder="uploads")
 
     # Reconcile available slots based on active bookings
@@ -417,20 +430,26 @@ async def update_parking(
     })
     new_available_slots = max(0, slots - active_count)
 
+    update_fields = {
+        "name": name.strip(),
+        "city": city.strip(),
+        "landmark": landmark.strip(),
+        "address": address.strip(),
+        "total_slots": slots,
+        "available_slots": new_available_slots,
+        "price_per_hour": price_per_hour,
+        "available_days": days,
+        "features": features,
+        "image": image_path,
+        "images": [image_path]
+    }
+    if lat is not None and lng is not None:
+        update_fields["lat"] = lat
+        update_fields["lng"] = lng
+
     await database.parkings.update_one(
         {"_id": ObjectId(space_id)},
-        {"$set": {
-            "name": name.strip(),
-            "city": city.strip(),
-            "landmark": landmark.strip(),
-            "address": address.strip(),
-            "total_slots": slots,
-            "available_slots": new_available_slots,
-            "price_per_hour": price_per_hour,
-            "available_days": days,
-            "features": features,
-            "image": image_path
-        }}
+        {"$set": update_fields}
     )
 
     updated_parking = await database.parkings.find_one({"_id": ObjectId(space_id)})

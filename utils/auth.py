@@ -63,7 +63,8 @@ def require_role(required_role: str):
     return role_checker
 
 def require_owner(user=Depends(get_current_user)):
-    """Dependency that enforces the owner role."""
-    if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Access denied: owner role required")
+    """Dependency that enforces the owner or admin role."""
+    role = str(user.get("role", "")).lower()
+    if role not in ["owner", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied: owner or admin role required")
     return user
